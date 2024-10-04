@@ -835,7 +835,7 @@ plot2
 
 ### {width=45%}
 
-```{r title = "Analysis of No of Purchases by Region"}
+```{r title = "Analysis of Total Sales Per Region"}
 plot3
 ```
 
@@ -872,7 +872,7 @@ Region<-sales_region_summary$Frequency
 plot3_B
 ```
 
-```{r title = "Analysis of by Customer Segment"}
+```{r title = "Analysis by Customer Segment"}
 plot4
 ```
 
@@ -959,7 +959,7 @@ plot6_B
 
 ### {width=42%}
 
-```{r title = "Analysis of by Sales Channel"}
+```{r title = "Analysis by Sales Channel"}
 plot8
 ```
 

@@ -1,0 +1,979 @@
+---
+title: "IDEAS_CAPSTONE_PROJECT"
+author: "*By Qozeem Uthman*"
+format: 
+  dashboard
+theme: flatly
+---
+
+```{r setup, include=FALSE, message=FALSE}
+#Load packages
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(here, tidyverse,
+               ggplot2, plotly, reactable,
+               bslib, shiny, gapminder,
+               bsicons, reactable, htmltools,
+               highcharter, flexdashboard,
+               rnaturalearth, plotly, countrycode,
+               ggtext, sf, flextable)
+
+```
+
+```{r}
+# Load the dataset
+sales_data <- readxl::read_xlsx(here("data/Data for Sales Analysis.xlsx"))
+
+# Sample data (with "Customer Feedback" as the column)
+feedback_data <- sales_data %>% select(`Customer Feedback`)
+
+# Create a mutate statement to categorize feedback under the appropriate themes
+feedback_data <- feedback_data %>%
+  mutate(Suggested_Feedback_Themes = case_when(
+    # Product Quality
+    `Customer Feedback` %in% c("Excellent quality", "Returning this item", "Top notch", 
+                               "Great product", "Mislabelled", "Missing accessories", 
+                               "Could be better", "Poor packaging", "Damaged on arrival", 
+                               "Exceeds expectations", "Will return", "Perfect fit") ~ "Product Quality",
+    
+    # Delivery Issues
+    `Customer Feedback` %in% c("Arrived late", "Delays in delivery", "Fast delivery", 
+                               "Quick shipping") ~ "Delivery Issues",
+    
+    # Customer Service
+    `Customer Feedback` %in% c("Terrible support") ~ "Customer Service",
+    
+    # Value for Money
+    `Customer Feedback` %in% c("Not worth the money", "Good value for money", 
+                               "Too expensive") ~ "Value for Money",
+    
+    # Experience with Purchase
+    `Customer Feedback` %in% c("Very fast service", "Nice experience", "Very satisfied", 
+                               "Will shop again", "I love it", "Would buy again", 
+                               "Satisfied with my purchase", "Fantastic experience", 
+                               "Do not recommend", "Not recommended", "Won't buy again") ~ "Experience with Purchase",
+    
+    # Product Description Accuracy
+    `Customer Feedback` %in% c("Item as described", "Mislabelled", "Not as described", 
+                               "Color not as shown") ~ "Product Description Accuracy",
+    
+    # Default for other cases
+    TRUE ~ "Other"
+  ))
+
+# Remove NA values for analysis
+feedback_data_clean <- feedback_data %>%
+  filter(!is.na(`Customer Feedback`))
+
+# Calculate frequency and percentages of each theme
+theme_summary <- feedback_data_clean %>%
+  group_by(Suggested_Feedback_Themes) %>%
+  summarise(Frequency = n()) %>%
+  mutate(Percentage = round((Frequency / sum(Frequency)) * 100, 2))
+
+
+# Arrange the data by frequency in descending order
+theme_summary <- theme_summary %>%
+  arrange(desc(Frequency))
+
+# Create the horizontal bar chart
+plot1 <- ggplot(theme_summary, aes(x = reorder(Suggested_Feedback_Themes, Frequency), y = Frequency, fill = Suggested_Feedback_Themes)) +
+  geom_bar(stat = "identity", width = 0.7) +  # Create bar chart
+  scale_fill_manual(values = c("Product Quality" = "#FF9999",  # Faded Red
+                               "Delivery Issues" = "#9999FF",  # Faded Blue
+                               "Customer Service" = "#FFFF99", # Faded Yellow
+                               "Value for Money" = "#D2B48C",  # Faded Brown
+                               "Experience with Purchase" = "#99FF99",  # Faded Green
+                               "Product Description Accuracy" = "#FFCC99")) +  # Faded color
+  geom_text(aes(label = Frequency), hjust = -0.2) +  # Display frequency values next to bars
+  labs(title = "") +  # Remove x and y axis titles in labs()
+  coord_flip() +  # Flip the chart to make it horizontal
+  theme_minimal() +  # Simple theme
+  theme(
+    axis.text.y = element_text(face = "bold", hjust = 1),  # Make category names bold
+    axis.text.x = element_blank(),  # Hide tick marks and numbers under Frequency
+    axis.title.x = element_blank(),  # Remove x-axis title
+    axis.title.y = element_blank(),  # Remove y-axis title
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),  # Make title very bold and centered
+    panel.grid = element_blank(),  # Remove gridlines
+    legend.position = "none"  # Hide the legend (color display under legend title)
+  )
+
+
+
+# Manually rename the longer categories first
+theme_summary$category <- recode(theme_summary$Suggested_Feedback_Themes, 
+                                 "Product Description Accuracy" = "Prod. Desc. Acc.", 
+                                 "Customer Service" = "Cust. Serv")
+
+# Create a label that combines the category and percentage for better visualization
+theme_summary$label <- paste(theme_summary$Suggested_Feedback_Themes, "\n", theme_summary$Percentage, "%")
+
+# Create a donut chart
+plot1_B <- ggplot(theme_summary, aes(x = 2, y = Percentage, fill = Suggested_Feedback_Themes)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +  # Create pie chart with bars
+  coord_polar(theta = "y") +  # Convert to polar coordinates for a donut chart
+  xlim(1.0, 2.5) +  # Add hole in the center to create the donut chart effect
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) +  # Add labels inside each portion
+  scale_fill_manual(values = c("#B0C4DE", "#F4A460", "#F5DEB3", "#D8BFD8", "#C1E1C1", "brown")) +  # Apply custom faded color palette
+  labs(title = "") +
+  theme_void() +  # Clean, minimalistic background
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Center and bold the title
+    legend.position = "none"  # Remove the legend
+  )
+
+# Section 2: Sentiment Distribution
+sentiment_data <- sales_data %>%
+  filter(`Customer assessment of Sales Rep` %in% c("Positive", "Neutral", "Negative")) %>%
+  count(`Customer assessment of Sales Rep`) %>%
+  mutate(Percentage = round(n / sum(n) * 100, 2))
+
+# Create the donut chart
+plot2 <- ggplot(sentiment_data, aes(x = "", y = Percentage, fill = `Customer assessment of Sales Rep`)) +
+  geom_bar(stat = "identity", width = 2.5, color = "white") +  # Adjust width to close gaps
+  coord_polar(theta = "y") +  # Convert to polar coordinates for pie chart
+  theme_void() +  # Remove default background and axis
+  geom_text(aes(label = paste0(`Customer assessment of Sales Rep`, ": ", Percentage, "%")), 
+            position = position_stack(vjust = 0.5), size = 3, color = "black") +  # Add labels inside the chart
+  scale_fill_manual(values = c("Negative" = "#B3C6FF",  # Faded Blue
+                               "Neutral" = "#FFFF99",  # Faded Yellow
+                               "Positive" = "#4B9A9A")) +  # Faded Navy Blue
+  labs(title = "") +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),  # Make title very bold and centered
+    legend.position = "none"  # Hide the legend
+  ) +
+  annotate("rect", xmin = -1, xmax = 1, ymin = -1, ymax = 1, fill = "white", color = "white", size = 2)  # Add white circle to make donut shape
+
+
+# Create a bar chart for sentiment distribution with a shorter black line below bars
+plot2_B <- ggplot(sentiment_data, aes(x = `Customer assessment of Sales Rep`, y = n, fill = `Customer assessment of Sales Rep`)) +
+  geom_bar(stat = "identity", color = "black", width = 0.7) +  # Create bar chart with outlined bars
+  geom_segment(aes(x = 0.6, xend = 3.4, y = 0, yend = 0), color = "black", size = 1) +  # Short horizontal black line under the bars
+  scale_fill_manual(values = c("Positive" = "#87CEEB", "Neutral" = "#D3D3D3", "Negative" = "#FF6347")) +  # Custom colors
+  labs(title = "", 
+       x = "Sentiment Type", 
+       y = "Count") +
+  geom_text(aes(label = paste0(n)), vjust = -0.5, size = 3.5) +  # Add count labels
+  theme_minimal() +  # Clean minimal theme
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),  # Center and bold the title
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(face = "bold"),  # Bold x-axis title
+    axis.title.y = element_blank(),  # Remove y-axis title
+    legend.position = "none",  # Remove legend
+    panel.grid = element_blank()  # Remove gridlines
+  )
+
+# Section 3: Sales Analysis by Region
+sales_region_summary <- sales_data %>%
+  group_by(Region) %>%
+  summarise(
+    Frequency = n(),
+    Total_Sales = sum(`Sales Amount`),
+    Average_Sales = mean(`Sales Amount`),
+    Percentage_Sales = round(Total_Sales / sum(`Sales Amount`) * 100, 2)
+  ) %>%
+  mutate(
+    Percentage_Frequency = round(Frequency / sum(Frequency) * 100, 2)
+  )%>% filter(!is.na(Region))
+
+# Print the analysis of the number of purchases by region
+
+Region<-sales_region_summary$Region
+Region<-sales_region_summary$Frequency
+
+
+#_______ General World Map Visualization with Feedback Data______#
+
+# Load world map data
+world_map <- map_data("world")
+
+# Example sales_region_summary dataset with the provided region names
+sales_region_summary <- data.frame(
+  region = c("North America", "Europe", "Asia Pacific", "Latin America", "Middle East & Africa"),
+  Total_Sales = c(500000, 450000, 400000, 350000, 300000),  # Example Total Sales
+  Average_Sales = c(5000, 4500, 4000, 3500, 3000),          # Example Average Sales
+  Percentage_Sales = c(25, 22.5, 20, 17.5, 15),             # Example Percentage Sales
+  stringsAsFactors = FALSE
+)
+
+# Coordinates for regions (approximate values)
+region_coords <- data.frame(
+  region = c("North America", "Europe", "Asia Pacific", "Latin America", "Middle East & Africa"),
+  lon = c(-99.0, 10.0, 100.0, -60.0, 25.0),  # Approximate longitude coordinates
+  lat = c(37.0, 55.0, 20.0, -15.0, 0.0),     # Approximate latitude coordinates
+  stringsAsFactors = FALSE
+)
+
+# Merge sales_region_summary with world map data based on best available region names
+world_map_with_sales <- world_map %>%
+  mutate(region_group = case_when(
+    region %in% c("USA", "Canada", "Mexico") ~ "North America",
+    region %in% c("UK", "Germany", "France", "Spain", "Italy") ~ "Europe",
+    region %in% c("China", "Japan", "India", "Australia") ~ "Asia Pacific",
+    region %in% c("Brazil", "Argentina", "Chile") ~ "Latin America",
+    region %in% c("South Africa", "Egypt", "Saudi Arabia") ~ "Middle East & Africa",
+    TRUE ~ NA_character_  # Countries not included in these regions
+  )) %>%
+  left_join(sales_region_summary, by = c("region_group" = "region")) %>%
+  mutate(Total_Sales = ifelse(is.na(Total_Sales), 0, Total_Sales))
+
+# Merge region_coords with sales_region_summary to include Total_Sales in the region coordinates
+region_coords <- region_coords %>%
+  left_join(sales_region_summary, by = "region")
+
+# Plot the world map with sales distribution and labels inside boxes
+plot3 <- ggplot() +
+  # Base world map with polygons
+  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "lightgray", color = "black") +
+  
+  # Fill polygons with Total_Sales data, adjusting transparency for clarity
+  geom_polygon(data = world_map_with_sales, aes(x = long, y = lat, group = group, fill = Total_Sales), color = "black", alpha = 0.7) +
+  
+  # Set the color scale for the fill and customize the legend title and labels
+  scale_fill_viridis_c(option = "viridis", name = "Total Sales (in $)", 
+                       labels = scales::dollar_format(prefix = "$", suffix = "K", scale = 1e-3), 
+                       breaks = c(300000, 350000, 400000, 450000, 500000)) +
+  
+  # Adding labels with region names inside boxes (black background with white text)
+  geom_label(data = region_coords, aes(x = lon, y = lat, label = paste(region, "\n$", Total_Sales / 1000, "K")), 
+             fill = "black", color = "white", size = 2.5, fontface = "bold", label.size = 0.25) +  # Black background, white text
+  
+  # Map title and axis labels
+  labs(title = "", x = "Longitude", y = "Latitude") +
+  
+  # Clean and minimal theme
+  theme_minimal() +
+  theme(  
+    axis.text.x = element_blank(),  # Hide tick marks and numbers under Frequency
+    axis.text.y = element_blank(),
+    axis.title.x = element_blank(),  # Remove x-axis title
+    axis.title.y = element_blank(),  # Remove y-axis title
+    panel.grid = element_blank(),  # Remove gridlines
+    legend.position = "none"  # Hide the legend (color display under legend title)
+  ) +
+  
+  # Maintain the map's aspect ratio
+  coord_fixed()
+
+sales_region_summary <- sales_data %>%
+  group_by(Region) %>%
+  summarise(
+    Frequency = n(),
+    Total_Sales = sum(`Sales Amount`),
+    Average_Sales = mean(`Sales Amount`),
+    Percentage_Sales = round(Total_Sales / sum(`Sales Amount`) * 100, 2)
+  ) %>%
+  mutate(
+    Percentage_Frequency = round(Frequency / sum(Frequency) * 100, 2)
+  )%>% filter(!is.na(Region))
+
+Region<-sales_region_summary$Region
+Region<-sales_region_summary$Frequency
+
+# Create a bar chart for feedback entries by region
+plot3_B <- ggplot(sales_region_summary, aes(x = reorder(Region, Frequency), y = Frequency, fill = Region)) +
+  geom_bar(stat = "identity", color = "black", width = 0.7) +  # Bar chart with outlined bars
+  scale_fill_manual(values = c("#B0C4DE", "#F4A460", "#87CEEB", "#D2B48C", "#FFD700", "#FF6347")) +  # Custom colors for regions
+  labs(title = "", 
+       x = "Region", 
+       y = "Number of Feedback Entries") +
+  coord_flip() +  # Flip the chart to make it horizontal
+  geom_text(aes(label = Frequency), hjust = -0.2, size = 3.5) +  # Add labels above bars
+  theme_minimal() +  # Clean minimal theme
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),  # Center and bold the title
+    axis.title.x = element_blank(),  # remove x-axis title
+    axis.text.y = element_text(face = "bold"),  # Bold y-axis title
+    axis.title.y = element_blank(),
+    legend.position = "none",  # Remove legend
+    panel.grid = element_blank())  # Remove gridlines
+    
+#4--------- Categorize customer segments into defined groups
+customer_segment_summary <- sales_data %>%
+  group_by(`Customer Segment`) %>%
+  summarise(Frequency = n()) %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2),
+         Category = case_when(
+           `Customer Segment` %in% c("Online Direct", "Subscription") ~ "Online Direct",
+           `Customer Segment` %in% c("Wholesale", "Wholesale Customers") ~ "Wholesale",
+           `Customer Segment` %in% c("Retail", "Retail Customers") ~ "Retail",
+           `Customer Segment` %in% c("Corporate Clients", "Institutional Customers") ~ "Corporate",
+           `Customer Segment` %in% c("High Income", "Low Income", "Middle Income", "Premium Customers") ~ "Income",
+           `Customer Segment` %in% c("Discount Shoppers") ~ "Discount Shoppers"
+         ))
+
+cumulative_segment_summary <- customer_segment_summary %>%
+  group_by(Category) %>%
+  summarise(Frequency = sum(Frequency)) %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2))
+
+
+# Create the bar chart
+plot4 <- ggplot(cumulative_segment_summary, aes(x = reorder(Category, Frequency), y = Frequency, fill = Category)) +
+  geom_bar(stat = "identity", width = 0.7) +  # Create the bars
+  scale_fill_manual(values = c("Online Direct" = "#FF9999",    # Faded Red
+                               "Wholesale" = "#D2B48C",        # Faded Brown
+                               "Retail" = "#FFFF99",           # Faded Yellow
+                               "Corporate" = "#999999",        # Faded Black
+                               "Income" = "#666699",           # Faded Navy Blue
+                               "Discount Shoppers" = "#ADD8E6")) +         # Light Blue
+  geom_text(aes(label = Frequency), vjust = -0.5) +            # Display frequency on top of each bar
+  labs(title = "", 
+       x = "Customer Segment", 
+       y = "Frequency") +
+  theme_minimal() +                                             # Minimalist theme
+  theme(
+    panel.grid = element_blank(),                               # Remove gridlines
+    axis.line.x = element_line(color = "black"),                # Draw a line at the bottom of x-axis
+    axis.text.x = element_text(face = "bold"),                  # Make x-axis labels bold
+    axis.title.x = element_blank(),
+    axis.text.y = element_blank(),
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),  # Make title bold and centered
+    legend.position = "none")  # Hide the legend (color display under legend title
+
+
+# Create a label that combines Category and Percentage for better visualization
+cumulative_segment_summary$label <- paste(cumulative_segment_summary$Category, "\n", cumulative_segment_summary$Percentage, "%")
+
+# Create a basic pie chart
+library(plotly)
+
+plot4_B <- plot_ly(
+  cumulative_segment_summary, 
+  labels = ~Category, 
+  values = ~Percentage, 
+  type = 'pie', 
+  textinfo = 'label', 
+  hoverinfo = 'label+percent',  # Show label and percentage on hover
+  insidetextorientation = 'radial',  # Rotate labels within the chart
+  marker = list(colors = c("#87CEEB", "#FFD700", "#FF6347", "#D3D3D3", "#98FB98", "#B0C4DE"))
+) %>%
+  layout(
+    title = "",
+    showlegend = FALSE,  # Hide the legend
+    legend = list(title = list(text = NULL))  # No legend title
+  )
+
+
+#5a Summarize the frequency and percentage for each SalesRep ID
+sales_rep_summary <- sales_data %>%
+  group_by(`SalesRep ID`) %>%
+  summarise(Frequency = n()) %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2))
+
+#5b summarize frequency and percentage for each SalesRep ID by Sales Channel
+sales_rep_channel_summary <- sales_data %>%
+  group_by(`SalesRep ID`, `Sales Channel`) %>%
+  summarise(Frequency = n(), .groups = 'drop') %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2)) %>%
+  filter(!is.na(`Sales Channel`))
+
+# Sample color palette similar to cool ChatGPT colors
+cool_colors <- c("#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c", 
+                 "#98df8a", "#d62728", "#ff9896", "#9467bd", "#c5b0d5",
+                 "#17becf", "#9edae5", "#bcbd22", "#dbdb8d", "#e377c2", 
+                 "#f7b6d2", "#7f7f7f", "#c7c7c7", "#8c564b", "#c49c94")
+
+# Plotly Bar Chart for SalesRep Summary with Custom Features
+plot5 <- ggplot(sales_rep_summary, aes(x = `SalesRep ID`, y = Frequency, fill = `SalesRep ID`)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +  # Thinner bar sticks
+  scale_fill_manual(values = cool_colors) +  # Custom colors
+  geom_text(aes(label = Frequency), vjust = -0.2, size = 3.0) +  # Display figures on the right of each bar
+  labs(title = "Sales Rep Performance") +  # Remove x and y axis titles
+  theme_minimal() +  # Clean minimal theme
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Center and bold the title
+    axis.title.x = element_blank(),  # Remove x-axis title
+    axis.title.y = element_blank(),  # Remove y-axis title
+    legend.position = "none",  # Remove the legend
+    panel.grid = element_blank()  # Remove gridlines
+  ) 
+
+
+# Create the grouped bar plot
+plot5_B <- ggplot(sales_rep_channel_summary, aes(x = `SalesRep ID`, y = Frequency, fill = `Sales Channel`)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Create grouped bars
+  #geom_text(aes(label = Frequency), vjust = -0.5, position = position_dodge(0.9)) +  # Display frequency on top of bars
+  scale_fill_manual(values = c("Marketplace" = "#2E8B57",   # Faded Brown
+                               "Online Direct" = "#4682B4",    # Faded Orange
+                               "Retail" = "#B22222",          # Faded Yellow
+                               "Wholesale" = "black")) +    # Black
+  labs(title = "", 
+       x = "SalesRep ID", 
+       y = "Frequency") +
+  theme_minimal() +                                             # Minimalist theme
+  theme(
+    panel.grid = element_blank(),                               # Remove gridlines
+    axis.line.x = element_line(color = "black", size = 0.8),    # Black line at the bottom of x-axis
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),  # Rotate x-axis labels for readability and make them bold
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5)  # Make title bold and centered
+  )
+
+#6 Summarize the customer segment data based on feedback
+Product_category <- sales_data %>%
+  group_by(`Product Category`) %>%
+  summarise(Frequency = n()) %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2),
+         Assigned_Category = case_when(
+           `Product Category` %in% c("Electronics", "lectronics") ~ "Electronics",
+           `Product Category` %in% c("Automotive", "Automotive Parts", "Fashion") ~ "Automotive",
+           `Product Category` %in% c("Health & Beauty", "Baby Products") ~ "Health & Beauty",
+           `Product Category` %in% c("Home Appliances", "Home Décor", "Home Security", "Tools & Home Improvement") ~ "Home Products",
+           `Product Category` %in% c("Fitness Equipment", "Sports & Outdoors", "Wearables") ~ "Fitness & Outdoors",
+           `Product Category` == "Office Supplies" ~ "Office Supplies",
+           `Product Category` == "Groceries" ~ "Groceries",
+           `Product Category` == "Jewelry" ~ "Jewelry",
+           `Product Category` == "Musical Instruments" ~ "Musical Instruments",
+           `Product Category` == "Books & Media" ~ "Books & Media",
+           TRUE ~ "Uncategorized"  # In case there are categories not fitting above
+         )) %>%
+  arrange(`Product Category`)  # Sort by Product Category for better readability
+
+Product_category <- sales_data %>%
+  mutate(`Product Category` = case_when(
+    `Product Category` %in% c("Electronics", "lectronics") ~ "Electronics",
+    `Product Category` %in% c("Automotive", "Automotive Parts","Fashion") ~ "Automotive",
+    `Product Category` %in% c("Health & Beauty", "Baby Products") ~ "Health & Beauty",
+    `Product Category` %in% c("Home Appliances", "Home Décor", "Home Security","Tools & Home Improvement") ~ "Home Products",
+    `Product Category` %in% c("Fitness Equipment", "Sports & Outdoors", "Wearables") ~ "Fitness_outdoors",
+    `Product Category` == "Office Supplies" ~ "Office Supplies",
+    `Product Category` == "Groceries" ~ "Groceries",
+    `Product Category` == "Jewelry" ~ "Jewelry",
+    `Product Category` == "Musical Instruments" ~ "Musical Instrument",
+    `Product Category` == "Books & Media" ~ "Books & Media",
+    TRUE ~ "Uncategorized"  # All other categories not fitting above groups
+  )) %>%
+  group_by(`Product Category`) %>%
+  summarise(Frequency = n()) %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2))
+
+# Define a color palette
+colors <- c("#FF9999", "#FFCC99", "#FFCC66", "#99FF99", "#66FF66",
+            "#99CCFF", "#6699FF", "#3366FF", "#CC66FF", "#FF66CC")
+
+plot6 <- ggplot(Product_category, aes(x = reorder(`Product Category`, Frequency), y = Frequency, fill = `Product Category`)) +
+  geom_bar(stat = "identity") +  # Create bar chart
+  coord_flip() +  # Flip the axes for better readability
+  scale_fill_manual(values = colors) +  # Use the color codes
+  geom_text(aes(label = Frequency), hjust = -0.2) +  # Display frequency values neatly in front of bars
+  labs(title = "",
+       x = "Product Category",
+       y = "Frequency") +
+  theme_minimal() +  # Simple theme
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),  # Rotate x-axis labels for readability
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),  # Remove y-axis title
+    axis.text.y = element_text(face = "bold"),
+    panel.grid = element_blank(),  # Remove gridlines
+    legend.position = "none")  # Remove legend if not necessary
+
+
+# Create labels for the pie chart (category and percentage)
+Product_category$label <- paste(Product_category$`Product Category`, "\n", Product_category$Percentage, "%")
+
+# Create the pie chart directly using plotly
+plot6_B <- plot_ly(
+  Product_category, 
+  labels = ~`Product Category`, 
+  values = ~Percentage, 
+  type = 'pie', 
+  textinfo = 'label',
+  hoverinfo = 'label+percent',  # Only display label and percent on hover
+  insidetextorientation = 'radial',  # Rotate the labels inside the chart
+  marker = list(colors = c("#B0C4DE", "#FF6347", "#FFD700", "#98FB98", "#87CEEB", 
+                           "#F4A460", "#D8BFD8", "#FFE4B5", "#B8860B", "#C1E1C1", "#CD5C5C"))
+) %>%
+  layout(
+    title = "",
+    showlegend = FALSE,  # Ensure the legend is displayed
+    legend = list(title = list(text = NULL))  # Hide the legend title
+  )
+
+#7a Summarize the customer segment data based on feedback
+
+# Summarize the customer segment data based on feedback
+Product_name <- sales_data %>%
+  group_by(`Product Name`) %>%
+  summarise(Frequency = n()) %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2))
+
+# Sort the data by frequency and filter the top 10 products
+top_10_products <- Product_name %>%
+  arrange(desc(Frequency)) %>%
+  head(10)  # Get top 10 products
+
+
+# Define colors for each bar (ensure 10 colors for top 10 products)
+colors <- c("#D2B48C", "#FFA07A", "#FFFF99", "#000000", "#87CEEB", "#FFD700",
+            "#FF6347", "#4682B4", "#32CD32", "#2E8B57", "magenta")
+
+# Create the bar chart
+plot7 <- ggplot(top_10_products, aes(x = reorder(`Product Name`, Frequency), y = Frequency, fill = `Product Name`)) +
+  geom_bar(stat = "identity") +  # Create bar chart
+  scale_fill_manual(values = colors[1:nrow(top_10_products)]) +  # Apply color codes matching the number of top products
+  geom_text(aes(label = Frequency), hjust = -0.3) +  # Display frequency values above bars
+  coord_flip() +  # Flip the chart to make it horizontal
+  labs(title = "",
+       x = "Product Name",
+       y = "Frequency") +
+  theme_minimal() +  # Simple theme
+  theme(
+    panel.grid = element_blank(),  # Remove gridlines
+    axis.text.x = element_blank(),  # Rotate x-axis labels for readability
+    axis.text.y = element_text(face = "bold"),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "none"  # Remove legend if not necessary
+  ) 
+#---------------------------------------------------------
+#7b Summarize frequency and percentage by Sales Channel and product name
+sales_channel_product <- sales_data %>%
+  group_by(`Product Name`, `Sales Channel`) %>%
+  summarise(Frequency = n(), .groups = 'drop') %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2)) %>%
+  filter(!is.na(`Sales Channel`)) 
+
+# Group by Sales Channel and Product Name, sum frequencies, and calculate percentages
+top_products_by_channel <- sales_channel_product %>%
+  group_by(`Sales Channel`, `Product Name`) %>%
+  summarise(Frequency = sum(Frequency), .groups = 'drop') %>%
+  mutate(Percentage = round(Frequency / sum(Frequency) * 100, 2)) %>%
+  arrange(desc(Frequency)) %>%
+  top_n(10, Frequency)  # Get top 10 by frequency
+
+# Define custom colors for each Sales Channel
+colors <- c("#D2B48C", "#FFA07A", "#FFD700", "#87CEEB", "#FF6347")
+
+# Create the stacked bar chart with bars arranged from bottom to top
+plot7_B <- ggplot(top_products_by_channel, aes(x = reorder(`Product Name`, Frequency), y = Frequency, fill = `Sales Channel`)) +
+  geom_bar(stat = "identity", position = "stack") +  # Stacked bar chart
+  coord_flip() +  # Flip axes for better readability
+  scale_fill_manual(values = colors) +  # Apply custom color palette
+  geom_text(aes(label = Frequency), position = position_stack(vjust = 0.5), color = "white", size = 3.5) +  # Add frequency labels
+  labs(title = "", x = "Product Name", y = NULL) +  # Remove y-axis title
+  theme_minimal() +  # Simple, minimalistic theme
+  theme(
+    panel.grid = element_blank(),  # Remove gridlines
+    axis.text.x = element_blank(),  # Rotate x-axis labels slightly
+    legend.title = element_blank(),  # Remove legend title for a cleaner look
+    axis.text = element_text(size = 10),  # Increase size of axis labels
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Center and bold the title
+    axis.title.x = element_text(size = 12),  # Adjust x-axis title size
+    axis.title.y = element_blank(),  # Hide y-axis title
+    legend.position = "top"  # Move legend to the top for better readability
+  ) 
+
+#8a Grouping the sales data by Sales Channel and summarizing
+channel_analysis <- sales_data %>%
+  group_by(`Sales Channel`) %>%
+  summarise(Feedback_Frequency = n()) %>%
+  mutate(Feedback_Percentage = round((Feedback_Frequency / sum(Feedback_Frequency)) * 100, 2))%>%
+  filter(!is.na(`Sales Channel`))
+
+# Create a bar chart with adjusted features
+plot8 <- ggplot(channel_analysis, aes(x = reorder(`Sales Channel`, -Feedback_Frequency), y = Feedback_Frequency, fill = `Sales Channel`)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Feedback_Frequency),hjust = -0.1, size = 3.0, color = "black") +  # Add text labels above the bars
+  coord_flip() +  # Flip coordinates to make the chart more readable
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 9, face = "bold"),  # Increase size of y-axis text
+    axis.title.y = element_blank(),
+    axis.title = element_text(size = 9, face = "bold"),  # Increase size of axis titles
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),  # Center and bold the title
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),  # Remove minor gridlines
+    legend.position = "none"  # Remove legend if desired
+  ) +
+  labs(title = "", x = "Sales Channel", y = "Feedback Frequency")
+
+
+#---------------------------------------
+#8b Grouping the sales data by Sales Channel and summarizing
+
+channel_Feedback_analysis <- sales_data %>%
+  rename(Feedback = `Customer assessment of Sales Rep`) %>%
+  group_by(`Sales Channel`, Feedback) %>%
+  summarise(Feedback_Frequency = n(), .groups = 'drop') %>%
+  mutate(Percentage = round((Feedback_Frequency / sum(Feedback_Frequency) * 100), 2)) %>%
+  filter(!is.na(`Sales Channel`))
+
+# Define colors for feedback categories
+colors <- c("Negative" = "#FF9999",  # Faded red for negative
+            "Neutral" = "#A9A9A9",   # Deep ash for neutral
+            "Positive" = "#98FB98")  # Faded green for positive
+
+# Create the grouped bar chart
+plot8_B <- ggplot(channel_Feedback_analysis, aes(x = `Sales Channel`, y = Feedback_Frequency, fill = Feedback)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Grouped bar chart
+  scale_fill_manual(values = c("Negative" = "#FFB6B6", "Neutral" = "#A9A9A9", "Positive" = "#90EE90")) +  # Color codes
+  geom_text(aes(label = Feedback_Frequency), vjust = -0.3, position = position_dodge(width = 0.9), size = 3.5) +  # Add frequency labels
+  labs(title = "", x = "Sales Channel", y = "Feedback Frequency",fill = NULL) +
+  theme_minimal() +  # Simple theme
+  theme(
+    panel.grid = element_blank(),  # Remove gridlines
+    axis.text.x = element_text(size = 10, face = "bold"),  # Bold x-axis (sales channel) labels
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Center and bold the title
+    legend.position = "top"  # Move legend to the top
+  ) +
+  geom_hline(yintercept = 0, color = "black")  # Add black horizontal line
+
+
+#9----------------------
+Feedback_summary <- sales_data %>%
+  group_by(`Return Status`) %>%
+  summarise(
+    Total_Frequency = n(),  # Total frequency per return status
+    Highest_Feedback = `Customer assessment of Sales Rep`[which.max(n())],  # Get the highest customer feedback for each return status
+    Highest_Feedback_Freq = max(n()),  # Frequency of the highest customer feedback
+    Percentage_Highest_Feedback = round((max(n()) / sum(n())) * 100, 2)  # Percentage of highest feedback type
+  ) %>%
+  mutate(Percentage_Total = round((Total_Frequency / sum(Total_Frequency) * 100), 2))%>%
+  filter(!is.na(`Return Status`))  # Total feedback percentage
+
+# Create the label column
+Feedback_summary <- Feedback_summary %>%
+  mutate(label = paste(`Return Status`, "\n", Highest_Feedback, "\n", Percentage_Total, "%"))
+
+# Adjust the donut chart with a smaller hole and reduced text size
+plot9 <- ggplot(Feedback_summary, aes(x = 2, y = Percentage_Total, fill = `Return Status`)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +  # Create pie chart
+  coord_polar(theta = "y") +  # Convert to polar coordinates (circular)
+  xlim(1.0, 2.5) +  # Reduce the size of the hole by adjusting xlim
+  geom_text(aes(label = label), position = position_stack(vjust = 0.4), size = 2.3) +  # Reduce text size inside portions
+  scale_fill_manual(values = c("#87CEEB", "#B55A72", "#FFE066")) +  # Set custom colors
+  labs(title = "") +
+  theme_void() +  # Clean, minimalistic background
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Center and bold the title
+    legend.position = "none"  # Remove the legend
+  )
+
+#10 Calculate Average, Highest, and Lowest Price by Product
+price_analysis <- sales_data %>%
+  group_by(`Product Name`) %>%
+  summarise(
+    Average_Price = mean(`Cost Of Goods Sold`, na.rm = TRUE),
+    Highest_Price = max(`Cost Of Goods Sold`, na.rm = TRUE),
+    Lowest_Price = min(`Cost Of Goods Sold`, na.rm = TRUE)
+  ) %>%
+  arrange(desc(Highest_Price)) %>% head(10)
+
+# Define colors for each bar (ensure 10 colors for top 10 products)
+colors <- c("#D2B48C", "#FFA07A", "#FFFF99", "#000000", "#87CEEB",
+            "#FF6347", "#4682B4", "#32CD32","#FFA07A", "#FFFF99")
+
+
+# Bar chart for average price comparison
+plot10 <- ggplot(price_analysis, aes(x = reorder(`Product Name`, Average_Price), y = Average_Price)) +
+  geom_bar(stat = "identity", fill = colors) +  # Light blue fill for bars
+  coord_flip() +  # Flip the axes for better readability
+  geom_text(aes(label = Average_Price), hjust = -0.2) +  # Display frequency values next to bars
+  labs(title = "", x = "Product Name", y = "Average Price") +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(face = "bold", hjust = 1),  # Make category names bold
+    axis.text.x = element_blank(),  # Hide tick marks and numbers under Frequency
+    axis.title.x = element_blank(),  # Remove x-axis title
+    axis.title.y = element_blank(),  # Remove y-axis title
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),  # Make title very bold and centered
+    panel.grid = element_blank(),  # Remove gridlines
+    legend.position = "none"  # Hide the legend (color display under legend title)
+  )
+
+
+# Assuming you have a column for feedback frequency in another dataset
+feedback_data <- sales_data %>%
+  group_by(`Product Name`) %>%
+  summarise(Feedback_Frequency = n())  # Get the feedback frequency for each product
+
+# Merge with price analysis data
+price_feedback_analysis <- price_analysis %>%
+  inner_join(feedback_data, by = "Product Name")
+
+
+# Scatter plot for price vs feedback frequency
+plot10_B <- ggplot(price_feedback_analysis, aes(x = Average_Price, y = Feedback_Frequency)) +
+  geom_point(color = "#FF6347", size = 3) +  # Red points for scatter plot
+  geom_smooth(method = "lm", se = FALSE, color = "#4682B4") +  # Add linear regression line
+  labs(title = "",
+       x = "Average Price",
+       y = "Feedback Frequency") +
+  theme_minimal() +
+  theme(
+    axis.text = element_text(size = 10),  # Adjust size of axis text
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")  # Bold and center title
+  )
+
+
+#11 Assuming you have a Discount Rate column in your dataset
+discount_analysis <- sales_data %>%
+  group_by(`Product Name`) %>%
+  summarise(Average_Discount = round(mean(`Discount Applied`, na.rm = TRUE), 2)) %>%
+  arrange(desc(Average_Discount)) %>%
+  head(10)
+
+# Define colors for each bar (ensure 10 colors for top 10 products)
+colors <- c("#D2B48C", "#FFA07A", "#FFFF99", "#000000", "#87CEEB",
+            "#FF6347", "#4682B4", "#32CD32","#4682B4","#FFA07A")
+
+
+# Bar chart for average price comparison
+plot11 <- ggplot(discount_analysis, aes(x = reorder(`Product Name`, Average_Discount), y = Average_Discount)) +
+  geom_bar(stat = "identity", fill = colors) +  # Light blue fill for bars
+  coord_flip() +  # Flip the axes for better readability
+  geom_text(aes(label = Average_Discount), hjust = -0.0) +  # Display frequency values next to bars
+  labs(title = "", x = "Product Name", y = "Average Price") +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(face = "bold", hjust = 1),  # Make category names bold
+    axis.text.x = element_blank(),  # Hide tick marks and numbers under Frequency
+    axis.title.x = element_blank(),  # Remove x-axis title
+    axis.title.y = element_blank(),  # Remove y-axis title
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),  # Make title very bold and centered
+    panel.grid = element_blank(),  # Remove gridlines
+    legend.position = "none"  # Hide the legend (color display under legend title)
+  )
+
+# Prepare the data by summarizing discounts and feedback by date
+discount_feedback_analysis <- sales_data %>%
+  mutate(Order_Date = as.Date(`Sales Date`)) %>%  # Convert to Date format
+  group_by(Order_Date) %>%
+  summarise(
+    Average_Discount = mean(`Discount Applied`, na.rm = TRUE),
+    Feedback_Frequency = n(),  # Count the number of feedback entries
+    Positive_Feedback = sum(`Customer assessment of Sales Rep` == "Positive", na.rm = TRUE),  # Count positive feedback
+    Negative_Feedback = sum(`Customer assessment of Sales Rep` == "Negative", na.rm = TRUE), # Count negative feedback
+    Neutral_Feedback = sum(`Customer assessment of Sales Rep` == "Neutral", na.rm = TRUE)) %>%
+  arrange(desc(Average_Discount)) 
+
+# Line chart to track changes in discount rates and feedback over time
+plot11_B <- ggplot(discount_feedback_analysis, aes(x = Order_Date)) +
+  geom_line(aes(y = Average_Discount, color = "Average Discount"), size = 1.2) +  # Line for Average Discount
+  geom_line(aes(y = Feedback_Frequency, color = "Feedback Frequency"), size = 1.2) +  # Line for Feedback Frequency
+  labs(title = "",
+       x = "Date", y = "Value") +
+  scale_color_manual(values = c("Average Discount" = "#FF6347", "Feedback Frequency" = "#87CEEB")) +  # Custom colors
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Bold, centered title
+    legend.title = element_blank(),  # Remove legend title
+    legend.position = "top"  # Place legend on top
+  )
+
+
+#12----------------------------------
+
+# Assuming you have columns for Cost_Price and Selling_Price
+
+profit_margin_analysis <- sales_data %>%
+  mutate(Profit_Margin = `Sales Amount` - `Cost Of Goods Sold`) %>%
+  group_by(`Product Name`) %>%
+  summarise(
+    Total_Sales = sum(`Sales Amount`, na.rm = TRUE),
+    Total_Cost = sum(`Cost Of Goods Sold`, na.rm = TRUE),
+    Total_Profit = sum(Profit_Margin, na.rm = TRUE),
+    Average_Profit_Margin = mean(Profit_Margin, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    Total_Sales = ifelse(Total_Sales %% 1 >= 0.5, ceiling(Total_Sales), floor(Total_Sales)),
+    Total_Profit = ifelse(Total_Profit %% 1 >= 0.5, ceiling(Total_Profit), floor(Total_Profit)),
+    Average_Profit_Margin = ifelse(Average_Profit_Margin %% 1 >= 0.5, ceiling(Average_Profit_Margin), floor(Average_Profit_Margin))
+  ) %>%
+  filter(!is.na(`Product Name`)) %>%
+  arrange(desc(Total_Sales)) %>%
+  head(10)
+
+
+# Bar chart to compare profit margins across products
+plot12 <- ggplot(profit_margin_analysis, aes(x = reorder(`Product Name`, Average_Profit_Margin), y = Average_Profit_Margin, fill = `Product Name`)) +
+  geom_bar(stat = "identity", color = "black") +  # Add black outline to bars
+  coord_flip() +  # Flip axes for better readability
+  scale_fill_manual(values = c("#B0C4DE", "#F4A460", "#F5DEB3", "#D8BFD8", "#C1E1C1", "#AFEEEE", "#DDA0DD", "#E6E6FA", "#C0C0C0", "#ADD8E6")
+) +  # Custom colors
+  geom_text(aes(label = Average_Profit_Margin), hjust = -0.2) +  # Display frequency values next to bars
+  labs(title = "", x = NULL, y = "Average Profit Margin") +  # Label adjustments
+  theme_minimal() +  # Clean theme
+  theme(
+    panel.grid = element_blank(),  # Remove gridlines
+    axis.text.x = element_text(size = 10),  # Adjust axis text size
+    axis.title.x = element_blank(),
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Center and bold the title
+    legend.position = "none"  # Remove the legend for a cleaner look
+  ) 
+
+# Scatter plot to show relationship between profit margins and feedback frequency
+plot12_B <- ggplot(profit_margin_analysis, aes(x = Average_Profit_Margin, y = Total_Profit)) +
+  geom_point(aes(color = `Product Name`), size = 3) +  # Use colors for each product
+  labs(title = "", x = "Average Profit Margin", y = "Total Profit") +
+  scale_color_manual(values = c("#87CEEB", "#F4A460", "#FFD700", "#D2B48C", "#FFA07A", "#C1E1C1", "#87CEEB","#DDA0DD", "#FF6347", "#E6E6FA")) +  # Custom colors
+  theme_minimal() +  # Clean theme
+  theme(
+    axis.text = element_text(size = 10),  # Adjust axis text size
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")  # Center and bold the title
+  )
+
+```
+
+# PAGE 1
+
+## Row 1 {height=15%}
+
+### {width=10%}
+
+```{r title = "Sentiment Distribution"}
+plot2
+```
+
+## Row 2 {height=85%}
+
+### {width=45%}
+
+```{r title = "Analysis of No of Purchases by Region"}
+plot3
+```
+
+### {width=45%}
+
+```{r title = "Analysis of Feedback Themes"}
+plot1
+```
+
+```{r title = "Sentiment_Analysis_Distribution"}
+plot2_B
+```
+## {.sidebar width=2%}
+
+
+# PAGE 2
+
+## Row 1 {height=15%}
+
+### {width=26%}
+
+```{r title = "Proportion of Themes in Feedback"}
+plot1_B
+```
+
+
+## Row 2 {height=85%}
+### {width=42%}
+
+
+```{r title = "Analysis of Sales Amount by Region"}
+Region<-sales_region_summary$Region
+Region<-sales_region_summary$Frequency
+plot3_B
+```
+
+```{r title = "Analysis of by Customer Segment"}
+plot4
+```
+
+### {width=42%}
+```{r title = "Sales Representative"}
+plot5
+```
+
+```{r title = "Sales Representative and Sales Channel"}
+plot5_B
+```
+
+## {.sidebar width=2%}
+
+# PAGE 3
+
+## Row 1 {height=25%}
+
+### {width=26%}
+```{r title = "Distribution of Feedback Across Customer Segments"}
+plot4_B
+```
+
+## Row 2 {height=85%}
+### {width=42%}
+
+```{r title = "Purchases by Product Category"}
+plot6
+```
+
+```{r title = "Top 10 Sales Analysis by Product Name"}
+plot7
+```
+
+### {width=42%}
+```{r title = "Top 10 Analysis by Sales Channel and Product Name"}
+plot7_B
+```
+
+```{r title = "Top 10 Profit Margin Analysis"}
+plot12
+```
+
+## {.sidebar width=2%}
+
+# PAGE 4
+
+## Row 1 {height=15%}
+
+### {width=26%}
+
+```{r title = "Analysis of Return Status"}
+plot9
+```
+
+## Row 2 {height=85%}
+### {width=42%}
+
+```{r title = "Customer general feedback across channels"}
+plot8_B
+```
+
+### {width=42%}
+
+
+```{r title = "Top 10 Price Analysis"}
+plot10
+```
+
+```{r title = "Top 10 Discount Analysis"}
+plot11
+```
+
+## {.sidebar width=2%}
+
+# PAGE 5
+## Row 1 {height=55%}
+
+```{r title = "Percentage Distribution of Product Categories"}
+plot6_B
+```
+
+## Row 2 {height=45%}
+
+### {width=42%}
+
+```{r title = "Analysis of by Sales Channel"}
+plot8
+```
+
+```{r title = "Discount Rates Over Time and Their Effect on Feedback"}
+plot11_B
+```
+
+### {width=42%}
+```{r title = "Relationship Between Price and Feedback Frequency"}
+plot10_B
+```
+
+```{r title = "Relationship Between Profit Margins and Feedback"}
+plot12_B
+```
+
+## {.sidebar width=2%}
